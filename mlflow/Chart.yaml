@@ -1,0 +1,17 @@
+apiVersion: v2
+name: mlflow
+description: A MLFlow helm chart for Kubernetes 
+
+type: application
+
+version: 0.1.0
+
+appVersion: "2.0.1"
+
+maintainers: 
+  - name: namnt96
+    email: nam.nguyen.tuan2307@gmail.com
+
+dependencies:
+  - name: postgresql
+    condition: postgresql.enabled

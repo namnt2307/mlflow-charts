@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mlflow.fullname" . }}
+  labels:
+    {{- include "mlflow.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "mlflow.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.server.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "mlflow.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.server.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "mlflow.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.server.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          securityContext:
+            {{- toYaml .Values.server.securityContext | nindent 12 }}
+          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command: ["mlflow"]
+          args: 
+            - "server"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "5000"
+          {{- if .Values.server.s3.enabled }}
+            - "--default-artifact-root"
+            - {{- printf " s3://%s" .Values.server.s3.bucketName }}
+          {{- end}}
+          {{- if .Values.postgresql.enabled }}
+            - "--backend-store-uri"
+            - {{- printf " postgresql://%s:%s@%s:5432/%s" .Values.postgresql.global.postgresql.auth.username .Values.postgresql.global.postgresql.auth.password (printf "%s-postgresql" .Release.Name) .Values.postgresql.global.postgresql.auth.database }}
+          {{- end }}
+          {{- range .Values.server.extraArgs }}
+            - {{ . | quote }} 
+          {{- end}}
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          env:
+          {{- if .Values.server.env }}
+          {{- toYaml .Values.server.env | nindent 12 }}
+          {{- end}}
+          {{- if .Values.server.s3.enabled }}
+            - name: AWS_SECRET_ACCESS_KEY
+              value: {{ .Values.server.s3.secretKey }}
+            - name: AWS_ACCESS_KEY_ID
+              value: {{ .Values.server.s3.accessKey }}
+          {{- end }}
+          {{- if .Values.server.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.server.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.server.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.server.livenessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.server.livenessProbe.periodSeconds }}
+          {{- end }}
+          {{- if .Values.server.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.server.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.server.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.server.livenessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.server.livenessProbe.periodSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
